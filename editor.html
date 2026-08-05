@@ -1,0 +1,572 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>gitGraffiti editor</title>
+<style>
+  :root {
+    --bg: #0d1117;
+    --panel: #161b22;
+    --border: #30363d;
+    --text: #e6edf3;
+    --muted: #8b949e;
+    --accent: #2f81f7;
+    --empty: #21262d;
+    --l1: #0e4429;
+    --l2: #006d32;
+    --l3: #26a641;
+    --l4: #39d353;
+    --cell: 13px;
+    --gap: 3px;
+  }
+  @media (prefers-color-scheme: light) {
+    :root {
+      --bg: #ffffff;
+      --panel: #f6f8fa;
+      --border: #d0d7de;
+      --text: #1f2328;
+      --muted: #59636e;
+      --empty: #ebedf0;
+      --l1: #9be9a8;
+      --l2: #40c463;
+      --l3: #30a14e;
+      --l4: #216e39;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    padding: 24px;
+    background: var(--bg);
+    color: var(--text);
+    font: 14px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+  }
+  h1 { font-size: 20px; margin: 0 0 4px; }
+  .sub { color: var(--muted); margin: 0 0 20px; }
+  .panel {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 14px 16px;
+    margin-bottom: 16px;
+  }
+  .row { display: flex; flex-wrap: wrap; gap: 16px; align-items: flex-end; }
+  .field { display: flex; flex-direction: column; gap: 5px; }
+  label { font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; }
+  select, input[type=text], input[type=number], textarea {
+    background: var(--bg);
+    color: var(--text);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 5px 8px;
+    font: inherit;
+  }
+  textarea { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; width: 100%; }
+  button {
+    background: var(--panel);
+    color: var(--text);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 6px 12px;
+    font: inherit;
+    cursor: pointer;
+  }
+  button:hover { border-color: var(--accent); }
+  button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+
+  .brush { display: flex; gap: 6px; }
+  .swatch {
+    width: 30px; height: 26px;
+    border: 2px solid transparent;
+    border-radius: 6px;
+    cursor: pointer;
+    padding: 0;
+  }
+  .swatch[aria-pressed="true"] { border-color: var(--accent); }
+
+  .graph-wrap { overflow-x: auto; padding-bottom: 6px; }
+  .graph { display: inline-block; min-width: min-content; }
+  .months { position: relative; height: 16px; margin-left: 32px; }
+  .months span { position: absolute; font-size: 11px; color: var(--muted); }
+  .body { display: flex; }
+  .days {
+    width: 32px;
+    display: grid;
+    grid-template-rows: repeat(7, var(--cell));
+    gap: var(--gap);
+    font-size: 10px;
+    color: var(--muted);
+  }
+  .days div { line-height: var(--cell); }
+  .grid {
+    display: grid;
+    grid-template-rows: repeat(7, var(--cell));
+    grid-auto-flow: column;
+    grid-auto-columns: var(--cell);
+    gap: var(--gap);
+  }
+  .c {
+    width: var(--cell); height: var(--cell);
+    border-radius: 2px;
+    background: var(--empty);
+    cursor: crosshair;
+  }
+  .c.l1 { background: var(--l1); }
+  .c.l2 { background: var(--l2); }
+  .c.l3 { background: var(--l3); }
+  .c.l4 { background: var(--l4); }
+  .c.off { background: transparent; cursor: default; }
+
+  .stats { display: flex; gap: 24px; flex-wrap: wrap; }
+  .stat b { display: block; font-size: 18px; font-weight: 600; }
+  .stat span { font-size: 12px; color: var(--muted); }
+  code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 12px;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 8px 10px;
+    display: block;
+    overflow-x: auto;
+    white-space: pre;
+  }
+  .hint { font-size: 12px; color: var(--muted); margin: 8px 0 0; }
+  .cols { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  @media (max-width: 720px) { .cols { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+
+<h1>gitGraffiti editor</h1>
+<p class="sub">Click and drag to paint. Export a bitmap, then feed it to <code style="display:inline;padding:1px 5px">gitgraffiti.py</code>.</p>
+
+<div class="panel">
+  <div class="row">
+    <div class="field">
+      <label for="view">View</label>
+      <select id="view"></select>
+    </div>
+    <div class="field">
+      <label>Brush</label>
+      <div class="brush" id="brush"></div>
+    </div>
+    <div class="field">
+      <label for="perLevel">Commits per level</label>
+      <input type="number" id="perLevel" value="3" min="1" max="50" style="width:80px">
+    </div>
+    <div class="field">
+      <label for="stampText">Stamp text</label>
+      <div style="display:flex;gap:6px">
+        <input type="text" id="stampText" placeholder="HELLO" style="width:150px">
+        <button id="stamp">Stamp</button>
+      </div>
+    </div>
+    <button id="clear">Clear</button>
+  </div>
+  <p class="hint">Shift-click or right-click erases. Hover a cell to see its date.</p>
+</div>
+
+<div class="panel graph-wrap">
+  <div class="graph">
+    <div class="months" id="months"></div>
+    <div class="body">
+      <div class="days"><div></div><div>Mon</div><div></div><div>Wed</div><div></div><div>Fri</div><div></div></div>
+      <div class="grid" id="grid"></div>
+    </div>
+  </div>
+</div>
+
+<div class="panel stats" id="stats"></div>
+
+<div class="cols">
+  <div class="panel">
+    <label for="out">Bitmap &mdash; save as <b>my-art.txt</b></label>
+    <textarea id="out" rows="9" readonly spellcheck="false"></textarea>
+    <div class="row" style="margin-top:10px">
+      <button id="copy" class="primary">Copy</button>
+      <button id="download">Download .txt</button>
+    </div>
+  </div>
+  <div class="panel">
+    <label>Then run</label>
+    <code id="cmd"></code>
+    <p class="hint">Preview first. Add <b>--commit --repo &lt;path&gt;</b> only when the preview looks right.</p>
+    <label for="imp" style="margin-top:14px;display:block">Import a bitmap</label>
+    <textarea id="imp" rows="4" placeholder="paste bitmap text, then click Load" spellcheck="false"></textarea>
+    <button id="load" style="margin-top:8px">Load</button>
+  </div>
+</div>
+
+<script>
+// Font data is generated from font.py so the editor and the CLI never drift.
+const FONT = /*__FONT_DATA__*/{
+  " ": ["..","..","..","..","..","..",".."],
+  "!": [".#.",".#.",".#.",".#.",".#.","...",".#."],
+  "'": ["#","#",".",".",".",".","."],
+  "(": [".#","#.","#.","#.","#.","#.",".#"],
+  ")": ["#.",".#",".#",".#",".#",".#","#."],
+  "*": [".....","#.#.#",".###.","#####",".###.","#.#.#","....."],
+  "+": [".....","..#..","..#..","#####","..#..","..#..","....."],
+  ",": ["..","..","..","..","##","##","#."],
+  "-": [".....",".....",".....","#####",".....",".....","....."],
+  ".": ["..","..","..","..","..","##","##"],
+  "/": ["....#","....#","...#.","..#..",".#...","#....","#...."],
+  "0": [".###.","#...#","#..##","#.#.#","##..#","#...#",".###."],
+  "1": ["..#..",".##..","..#..","..#..","..#..","..#..",".###."],
+  "2": [".###.","#...#","....#","...#.","..#..",".#...","#####"],
+  "3": ["#####","...#.","..#..","...#.","....#","#...#",".###."],
+  "4": ["...#.","..##.",".#.#.","#..#.","#####","...#.","...#."],
+  "5": ["#####","#....","####.","....#","....#","#...#",".###."],
+  "6": ["..##.",".#...","#....","####.","#...#","#...#",".###."],
+  "7": ["#####","....#","...#.","..#..",".#...",".#...",".#..."],
+  "8": [".###.","#...#","#...#",".###.","#...#","#...#",".###."],
+  "9": [".###.","#...#","#...#",".####","....#","...#.",".##.."],
+  ":": ["..","##","##","..","##","##",".."],
+  "<": ["..#",".#.","#..","#..","#..",".#.","..#"],
+  "=": [".....",".....","#####",".....","#####",".....","....."],
+  ">": ["#..",".#.","..#","..#","..#",".#.","#.."],
+  "?": [".###.","#...#","....#","...#.","..#..",".....","..#.."],
+  "@": [".###.","#...#","#.###","#.#.#","#.###","#....",".###."],
+  "A": [".###.","#...#","#...#","#####","#...#","#...#","#...#"],
+  "B": ["####.","#...#","#...#","####.","#...#","#...#","####."],
+  "C": [".####","#....","#....","#....","#....","#....",".####"],
+  "D": ["####.","#...#","#...#","#...#","#...#","#...#","####."],
+  "E": ["#####","#....","#....","####.","#....","#....","#####"],
+  "F": ["#####","#....","#....","####.","#....","#....","#...."],
+  "G": [".###.","#...#","#....","#..##","#...#","#...#",".###."],
+  "H": ["#...#","#...#","#...#","#####","#...#","#...#","#...#"],
+  "I": ["###",".#.",".#.",".#.",".#.",".#.","###"],
+  "J": ["..###","...#.","...#.","...#.","...#.","#..#.",".##.."],
+  "K": ["#...#","#..#.","#.#..","##...","#.#..","#..#.","#...#"],
+  "L": ["#....","#....","#....","#....","#....","#....","#####"],
+  "M": ["#...#","##.##","#.#.#","#.#.#","#...#","#...#","#...#"],
+  "N": ["#...#","##..#","#.#.#","#..##","#...#","#...#","#...#"],
+  "O": [".###.","#...#","#...#","#...#","#...#","#...#",".###."],
+  "P": ["####.","#...#","#...#","####.","#....","#....","#...."],
+  "Q": [".###.","#...#","#...#","#...#","#.#.#","#..#.",".##.#"],
+  "R": ["####.","#...#","#...#","####.","#.#..","#..#.","#...#"],
+  "S": [".####","#....","#....",".###.","....#","....#","####."],
+  "T": ["#####","..#..","..#..","..#..","..#..","..#..","..#.."],
+  "U": ["#...#","#...#","#...#","#...#","#...#","#...#",".###."],
+  "V": ["#...#","#...#","#...#","#...#","#...#",".#.#.","..#.."],
+  "W": ["#...#","#...#","#...#","#.#.#","#.#.#","##.##","#...#"],
+  "X": ["#...#","#...#",".#.#.","..#..",".#.#.","#...#","#...#"],
+  "Y": ["#...#","#...#",".#.#.","..#..","..#..","..#..","..#.."],
+  "Z": ["#####","....#","...#.","..#..",".#...","#....","#####"],
+  "\\": ["#....","#....",".#...","..#..","...#.","....#","....#"],
+  "_": [".....",".....",".....",".....",".....",".....","#####"],
+  "~": [".##.##.","#######","#######",".#####.",".#####.","..###..","...#..."],
+}/*__END_FONT__*/;
+
+const ROWS = 7;
+const MAX_LEVEL = 4;
+const MONTHS = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+const DAY_NAMES = ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"];
+
+// ---------- date helpers (mirrors gitgraffiti.py) ----------
+const DAY = 86400000;
+function utc(y, m, d) { return new Date(Date.UTC(y, m, d)); }
+function today() {
+  const now = new Date();
+  return utc(now.getFullYear(), now.getMonth(), now.getDate());
+}
+function addDays(d, n) { return new Date(d.getTime() + n * DAY); }
+function sundayOnOrBefore(d) { return addDays(d, -d.getUTCDay()); }
+function iso(d) { return d.toISOString().slice(0, 10); }
+
+function rollingCanvas(t) {
+  const start = addDays(sundayOnOrBefore(t), -52 * 7);
+  return { start, cols: 53, first: start, last: t,
+           label: iso(start) + " to " + iso(t), year: null };
+}
+function yearCanvas(year, t) {
+  const jan1 = utc(year, 0, 1), dec31 = utc(year, 11, 31);
+  const start = sundayOnOrBefore(jan1);
+  const cols = Math.round((sundayOnOrBefore(dec31) - start) / DAY / ROWS) + 1;
+  return { start, cols, first: jan1, last: dec31 < t ? dec31 : t,
+           label: String(year), year };
+}
+function cellDate(cv, col, row) { return addDays(cv.start, col * ROWS + row); }
+function drawable(cv, d) { return d >= cv.first && d <= cv.last; }
+
+// ---------- state ----------
+let canvas = rollingCanvas(today());
+let cells = [];            // cells[row][col] = level
+let brush = MAX_LEVEL;
+let painting = false;
+let paintValue = MAX_LEVEL;
+
+function blankCells(cols) {
+  return Array.from({ length: ROWS }, () => new Array(cols).fill(0));
+}
+
+// ---------- build controls ----------
+const viewSel = document.getElementById("view");
+const nowYear = today().getUTCFullYear();
+viewSel.appendChild(new Option("Trailing 53 weeks", "rolling"));
+for (let y = nowYear; y >= nowYear - 6; y--) {
+  viewSel.appendChild(new Option(y, "year:" + y));
+}
+
+const brushBox = document.getElementById("brush");
+[0, 1, 2, 3, 4].forEach(level => {
+  const b = document.createElement("button");
+  b.className = "swatch" + (level ? " l" + level : "");
+  b.style.background = level ? "var(--l" + level + ")" : "var(--empty)";
+  b.title = level ? "Level " + level : "Erase";
+  b.setAttribute("aria-pressed", String(level === brush));
+  b.onclick = () => {
+    brush = level;
+    [...brushBox.children].forEach((c, i) =>
+      c.setAttribute("aria-pressed", String(i === level)));
+  };
+  brushBox.appendChild(b);
+});
+
+// ---------- grid ----------
+const gridEl = document.getElementById("grid");
+const monthsEl = document.getElementById("months");
+
+function buildGrid() {
+  gridEl.innerHTML = "";
+  monthsEl.innerHTML = "";
+  // Read the cell geometry back out of the CSS so there is one source of it.
+  const css = getComputedStyle(document.documentElement);
+  const step = parseInt(css.getPropertyValue("--cell"))
+             + parseInt(css.getPropertyValue("--gap"));
+
+  for (let col = 0; col < canvas.cols; col++) {
+    for (let row = 0; row < ROWS; row++) {
+      const d = cellDate(canvas, col, row);
+      const el = document.createElement("div");
+      el.className = "c";
+      el.dataset.row = row;
+      el.dataset.col = col;
+      if (!drawable(canvas, d)) {
+        el.classList.add("off");
+      } else {
+        el.title = iso(d) + " (" + DAY_NAMES[row] + ")";
+      }
+      gridEl.appendChild(el);
+    }
+  }
+
+  // Month labels, one per run of columns, skipping runs too narrow to fit.
+  const runs = [];
+  for (let col = 0; col < canvas.cols; col++) {
+    const m = cellDate(canvas, col, 0).getUTCMonth();
+    if (runs.length && runs[runs.length - 1].m === m) runs[runs.length - 1].end = col;
+    else runs.push({ m, start: col, end: col });
+  }
+  for (const r of runs) {
+    if (r.end - r.start + 1 < 3) continue;
+    const s = document.createElement("span");
+    s.textContent = MONTHS[r.m];
+    s.style.left = (r.start * step) + "px";
+    monthsEl.appendChild(s);
+  }
+  paint();
+}
+
+function paint() {
+  for (const el of gridEl.children) {
+    const level = cells[+el.dataset.row][+el.dataset.col];
+    el.classList.remove("l1", "l2", "l3", "l4");
+    if (level && !el.classList.contains("off")) el.classList.add("l" + level);
+  }
+  update();
+}
+
+function setCell(el, level) {
+  if (el.classList.contains("off")) return;
+  cells[+el.dataset.row][+el.dataset.col] = level;
+}
+
+gridEl.addEventListener("contextmenu", e => e.preventDefault());
+gridEl.addEventListener("mousedown", e => {
+  const el = e.target.closest(".c");
+  if (!el) return;
+  e.preventDefault();
+  painting = true;
+  paintValue = (e.shiftKey || e.button === 2) ? 0 : brush;
+  setCell(el, paintValue);
+  paint();
+});
+gridEl.addEventListener("mouseover", e => {
+  if (!painting) return;
+  const el = e.target.closest(".c");
+  if (el) { setCell(el, paintValue); paint(); }
+});
+document.addEventListener("mouseup", () => { painting = false; });
+
+// ---------- export ----------
+function bounds() {
+  let min = null, max = null;
+  for (let row = 0; row < ROWS; row++) {
+    for (let col = 0; col < canvas.cols; col++) {
+      if (cells[row][col]) {
+        if (min === null || col < min) min = col;
+        if (max === null || col > max) max = col;
+      }
+    }
+  }
+  return { min, max };
+}
+
+function toBitmap() {
+  const { min, max } = bounds();
+  if (min === null) return "";
+  return cells.map(row =>
+    row.slice(min, max + 1)
+       .map(v => (v === 0 ? "." : v === MAX_LEVEL ? "#" : String(v)))
+       .join("")
+  ).join("\n");
+}
+
+function update() {
+  const perLevel = Math.max(1, +document.getElementById("perLevel").value || 1);
+  let lit = 0, commits = 0, first = null, last = null;
+
+  for (let col = 0; col < canvas.cols; col++) {
+    for (let row = 0; row < ROWS; row++) {
+      const level = cells[row][col];
+      if (!level) continue;
+      const d = cellDate(canvas, col, row);
+      if (!drawable(canvas, d)) continue;
+      lit++;
+      commits += level * perLevel;
+      if (!first || d < first) first = d;
+      if (!last || d > last) last = d;
+    }
+  }
+
+  document.getElementById("stats").innerHTML = `
+    <div class="stat"><b>${lit}</b><span>days lit</span></div>
+    <div class="stat"><b>${commits}</b><span>commits</span></div>
+    <div class="stat"><b>${canvas.label}</b><span>view</span></div>
+    <div class="stat"><b>${first ? iso(first) + " to " + iso(last) : "&mdash;"}</b><span>range</span></div>`;
+
+  document.getElementById("out").value = toBitmap();
+
+  const { min } = bounds();
+  const parts = ["python3 gitgraffiti.py --bitmap my-art.txt"];
+  if (canvas.year) parts.push("--year " + canvas.year);
+  if (min !== null && min !== 0) parts.push("--offset " + min);
+  if (perLevel !== 3) parts.push("--per-level " + perLevel);
+  document.getElementById("cmd").textContent = parts.join(" ");
+}
+
+// ---------- actions ----------
+function resize(newCanvas) {
+  const old = cells, oldCols = canvas.cols;
+  canvas = newCanvas;
+  cells = blankCells(canvas.cols);
+  if (old.length) {  // keep the drawing where it is, as far as it fits
+    for (let row = 0; row < ROWS; row++)
+      for (let col = 0; col < Math.min(oldCols, canvas.cols); col++)
+        cells[row][col] = old[row][col];
+  }
+  buildGrid();
+}
+
+viewSel.onchange = () => {
+  const v = viewSel.value;
+  resize(v === "rolling" ? rollingCanvas(today())
+                         : yearCanvas(+v.split(":")[1], today()));
+};
+
+document.getElementById("perLevel").oninput = update;
+
+document.getElementById("clear").onclick = () => {
+  cells = blankCells(canvas.cols);
+  paint();
+};
+
+document.getElementById("stamp").onclick = () => {
+  const text = document.getElementById("stampText").value.trim();
+  if (!text) return;
+  const glyphs = [];
+  for (const ch of text) {
+    const g = FONT[ch.toUpperCase()];
+    if (!g) { alert("No glyph for " + JSON.stringify(ch)); return; }
+    glyphs.push(g);
+  }
+  const rows = Array(ROWS).fill("");
+  glyphs.forEach((g, i) => {
+    for (let r = 0; r < ROWS; r++) rows[r] += (i ? "." : "") + g[r];
+  });
+  const width = rows[0].length;
+  const level = brush || MAX_LEVEL;
+  const start = Math.max(0, Math.floor((canvas.cols - width) / 2));
+  cells = blankCells(canvas.cols);
+  for (let r = 0; r < ROWS; r++) {
+    for (let c = 0; c < width; c++) {
+      const col = start + c;
+      if (col < canvas.cols && rows[r][c] === "#") cells[r][col] = level;
+    }
+  }
+  paint();
+};
+
+document.getElementById("copy").onclick = async () => {
+  const btn = document.getElementById("copy");
+  try {
+    await navigator.clipboard.writeText(document.getElementById("out").value);
+    btn.textContent = "Copied";
+  } catch (err) {
+    document.getElementById("out").select();  // clipboard API needs https
+    btn.textContent = "Press Cmd-C";
+  }
+  setTimeout(() => { btn.textContent = "Copy"; }, 1500);
+};
+
+document.getElementById("download").onclick = () => {
+  const blob = new Blob([document.getElementById("out").value + "\n"],
+                        { type: "text/plain" });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = "my-art.txt";
+  a.click();
+  URL.revokeObjectURL(a.href);
+};
+
+document.getElementById("load").onclick = () => {
+  const text = document.getElementById("imp").value.replace(/\n+$/, "");
+  if (!text.trim()) return;
+  const lines = text.split("\n");
+  if (lines.length > ROWS) { alert("Bitmap has more than " + ROWS + " rows."); return; }
+  const width = Math.max(...lines.map(l => l.length));
+  const grid = lines.map(line => {
+    const row = [];
+    for (const ch of line.padEnd(width)) {
+      if (".0 ".includes(ch)) row.push(0);
+      else if ("#*xX".includes(ch)) row.push(MAX_LEVEL);
+      else if ("1234".includes(ch)) row.push(+ch);
+      else { row.push(null); }
+    }
+    return row;
+  });
+  if (grid.some(r => r.includes(null))) { alert("Unexpected character in bitmap."); return; }
+
+  const pad = ROWS - grid.length, top = pad >> 1;
+  const full = [];
+  for (let i = 0; i < top; i++) full.push(new Array(width).fill(0));
+  full.push(...grid);
+  while (full.length < ROWS) full.push(new Array(width).fill(0));
+
+  cells = blankCells(canvas.cols);
+  const start = Math.max(0, Math.floor((canvas.cols - width) / 2));
+  for (let r = 0; r < ROWS; r++)
+    for (let c = 0; c < width; c++)
+      if (start + c < canvas.cols) cells[r][start + c] = full[r][c];
+  paint();
+};
+
+// ---------- go ----------
+cells = blankCells(canvas.cols);
+buildGrid();
+</script>
+</body>
+</html>

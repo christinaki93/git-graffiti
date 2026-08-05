@@ -14,6 +14,32 @@ pixel to a date, and writes commits with `GIT_AUTHOR_DATE` and
 
 **Nothing is written unless you pass `--commit`.** The default is a preview.
 
+## Design it in the browser
+
+Open `editor.html` — no server, no build, just double-click it.
+
+```
+open editor.html
+```
+
+Click and drag on the graph to paint, shift-click or right-click to erase, and
+pick a shade from the brush swatches. Hovering a cell shows the date it maps
+to. `Stamp` renders text using the same font the CLI uses, and `Import` loads
+an existing bitmap back in for editing.
+
+The editor shows the day count, the commit count and the date range as you
+draw, then hands you two things: the bitmap to save as `my-art.txt`, and the
+exact command to run. Cells in the future, or outside the selected year, are
+greyed out and cannot be painted.
+
+The editor's copy of the font is generated from `font.py` by `embed_font.py`,
+and `test_editor.py` executes the editor's own JavaScript to prove its date
+maths agrees with the CLI. If you change the font, re-run:
+
+```
+python3 embed_font.py
+```
+
 ## Usage
 
 Preview some text on the trailing 53-week window (what your profile shows):
