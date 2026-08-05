@@ -149,6 +149,19 @@ class PreviewTests(unittest.TestCase):
         self.assertEqual(len(lines), gg.ROWS + 1)  # month header + 7 days
         self.assertEqual(len(set(len(line.rstrip()) > 0 for line in lines)), 1)
 
+    def test_year_header_labels_every_month(self):
+        # The partial first column belongs to the previous December; labelling
+        # it used to crowd January off the header.
+        canvas = gg.calendar_year_canvas(2025, date(2025, 12, 31))
+        header = gg._month_header(canvas, 0)
+        for month in gg.MONTHS:
+            self.assertIn(month, header, month)
+
+    def test_header_is_not_wider_than_the_grid(self):
+        for year in range(2015, 2036):
+            canvas = gg.calendar_year_canvas(year, date(year, 12, 31))
+            self.assertLessEqual(len(gg._month_header(canvas, 0)), canvas.cols)
+
     def test_preview_marks_lit_days(self):
         canvas = gg.rolling_canvas(date(2026, 8, 5))
         pattern = [[0] * 3 for _ in range(7)]

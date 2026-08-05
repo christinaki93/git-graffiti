@@ -183,18 +183,29 @@ def _shade(level, color):
 
 
 def _month_header(canvas, gutter):
+    """Month labels above the grid, one per run of columns in that month.
+
+    A run narrower than its label is left unlabelled — that is usually the
+    partial week at the start of a calendar-year view, and labelling it would
+    crowd out the month that follows.
+    """
     header = [" "] * canvas.cols
-    last_month = None
+    runs = []
     for col in range(canvas.cols):
         month = canvas.cell_date(col, 0).month
-        if month != last_month:
-            label = MONTHS[month - 1]
-            # Only label if it fits and does not collide with the previous one.
-            if col + len(label) <= canvas.cols and all(
-                    header[col + i] == " " for i in range(len(label))):
-                for i, char in enumerate(label):
-                    header[col + i] = char
-            last_month = month
+        if runs and runs[-1][0] == month:
+            runs[-1][2] = col
+        else:
+            runs.append([month, col, col])
+
+    for month, start, end in runs:
+        label = MONTHS[month - 1]
+        if end - start + 1 < len(label) or start + len(label) > canvas.cols:
+            continue
+        if any(header[start + i] != " " for i in range(len(label))):
+            continue
+        for i, char in enumerate(label):
+            header[start + i] = char
     return " " * gutter + "".join(header)
 
 
