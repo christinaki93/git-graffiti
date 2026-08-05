@@ -1,4 +1,4 @@
-# gitGraffiti
+# :octocat:🖌️ git-graffiti
 
 Draw pixel art on a GitHub contribution graph by generating backdated commits.
 
