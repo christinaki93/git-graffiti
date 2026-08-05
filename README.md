@@ -4,6 +4,8 @@ Draw pixel art on a GitHub contribution graph by generating backdated commits.
 
 Python 3, standard library only. No dependencies, nothing to install.
 
+![UI](git-graffiti-ui.png)
+
 ## How it works
 
 The contribution graph is a grid of weeks (columns) by weekdays (rows, Sunday
